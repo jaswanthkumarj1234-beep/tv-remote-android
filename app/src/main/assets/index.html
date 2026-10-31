@@ -38,10 +38,22 @@ h1{font:500 24px/1.1 Georgia,"Times New Roman",serif;margin:0;flex:1;letter-spac
 .apps .b{font-size:13px}
 details summary{color:var(--mut);font-size:13px;padding:4px 2px;list-style:none}details summary::-webkit-details-marker{display:none}
 .f{display:grid;gap:8px;margin-top:10px}.f label{font-size:12px;color:var(--mut);margin-bottom:-4px}
+
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.tabs .b{min-height:44px;border-radius:14px}
+#lpad{touch-action:none;height:34vh;min-height:200px;border-radius:16px;background:var(--bg);border:1.5px dashed var(--line);display:flex;align-items:center;
+  justify-content:center;color:var(--mut);text-align:center;line-height:1.6;font-size:14px}
+#lpad.on{border-color:var(--acc);background:var(--accbg)}
+#ltx{display:flex;gap:8px}
+#ltx input{flex:1;min-width:0;-webkit-user-select:text;user-select:text;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:0 14px;min-height:50px;font-size:16px;font-family:inherit;outline:none}
+#ltx input:focus{border-color:var(--acc)}
+.b.armed{background:var(--bad);border-color:var(--bad);color:#fff}
 </style></head><body>
 <div id="app">
   <header><span class="logo">&#10059;</span><h1>TV Remote</h1><div id="pill"><div id="dot"></div><span id="st">Connecting</span></div></header>
+  <div class="tabs"><div class="b act" id="tab_tv">TV</div><div class="b" id="tab_pc">Laptop</div></div>
   <div id="msg"></div>
+  <div id="tvp">
 
   <div class="card"><div class="row r2">
     <div class="b pri" id="pon">Power on</div><div class="b red" id="poff">Power off</div></div></div>
@@ -99,26 +111,65 @@ details summary{color:var(--mut);font-size:13px;padding:4px 2px;list-style:none}
   </div></details></div>
 
   <div class="card"><details id="setd"><summary>TV settings</summary>
-    <div class="f"><label>TV IP address (on the TV: Settings &gt; Network)</label><input id="cip" inputmode="decimal" placeholder="192.168.0.101">
-      <label>TV MAC address (only needed for Power on)</label><input id="cmac" placeholder="AA:BB:CC:DD:EE:FF">
+    <div class="f"><label>TV IP address (optional: the app finds the TV by itself)</label><input id="cip" inputmode="decimal" placeholder="192.168.0.101">
+      <label>TV MAC (learned automatically after the first connection)</label><input id="cmac" placeholder="AA:BB:CC:DD:EE:FF">
       <div class="b pri" id="csave">Save and reconnect</div><div class="hint" id="cmsg"></div></div>
   </details></div>
+</div><!--/tvp-->
+<div id="pcp" style="display:none">
+  <div class="card"><div id="lpad">Move one finger to move the mouse<br>Tap = click &middot; two fingers = scroll &middot; two-finger tap = right click</div></div>
+  <div class="card"><div class="row r4">
+    <div class="b" data-lclick="l">Left</div><div class="b" data-lclick="d">Double</div>
+    <div class="b" data-lclick="m">Middle</div><div class="b" data-lclick="r">Right</div></div></div>
+  <div class="card"><div class="lbl">Type on laptop</div>
+    <div id="ltx"><input id="ltxt" type="text" placeholder="Type here, it goes to the laptop" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="b" id="lclr" style="min-width:76px">Clear</div></div>
+    <div class="hint">Click where you want to type first. Enter sends Enter.</div></div>
+  <div class="card"><div class="lbl">Keys</div>
+    <div class="row r4"><div class="b" data-lkey="ESC">Esc</div><div class="b" data-lkey="TAB">Tab</div><div class="b" data-lkey="BACKSPACE">&#9003;</div><div class="b" data-lkey="ENTER">Enter</div></div>
+    <div class="row r4" style="margin-top:8px"><div class="b" data-lkey="LEFT">&#9664;</div><div class="b" data-lkey="UP">&#9650;</div><div class="b" data-lkey="DOWN">&#9660;</div><div class="b" data-lkey="RIGHT">&#9654;</div></div>
+    <div class="row r4" style="margin-top:8px"><div class="b small" data-lhot="ALT+TAB">Alt+Tab</div><div class="b small" data-lhot="WIN+D">Desktop</div><div class="b small" data-lkey="WIN">Win</div><div class="b small" data-lkey="SPACE">Space</div></div>
+    <div class="row r4" style="margin-top:8px"><div class="b small" data-lhot="CTRL+C">Copy</div><div class="b small" data-lhot="CTRL+V">Paste</div><div class="b small" data-lhot="CTRL+Z">Undo</div><div class="b small" data-lhot="F5">F5</div></div>
+  </div>
+  <div class="card"><div class="lbl">Media</div>
+    <div class="row r3"><div class="b" data-lmedia="VOLDOWN" data-rep="1">Vol &minus;</div><div class="b" data-lmedia="MUTE">Mute</div><div class="b" data-lmedia="VOLUP" data-rep="1">Vol +</div></div>
+    <div class="row r3" style="margin-top:8px"><div class="b" data-lmedia="PREV">&#9198;</div><div class="b" data-lmedia="PLAYPAUSE">&#9199;</div><div class="b" data-lmedia="NEXT">&#9197;</div></div></div>
+  <div class="card"><div class="lbl">Power</div>
+    <div class="row r2"><div class="b" data-lsys="lock">Lock</div><div class="b" data-lsys="screenoff">Screen off</div></div>
+    <div class="row r2" style="margin-top:8px"><div class="b red" data-lsys="sleep" data-arm="1">Sleep</div><div class="b red" data-lsys="shutdown" data-arm="1">Shut down</div></div></div>
+  <div class="card"><details id="lsetd"><summary>Laptop settings</summary>
+    <div class="f"><label>PIN (shown in pin.txt in the LaptopPad folder on the laptop)</label><input id="lpin" inputmode="numeric" placeholder="6-digit PIN">
+      <label>Laptop IP (optional, found automatically)</label><input id="lip" inputmode="decimal" placeholder="192.168.0.104">
+      <div class="b pri" id="lsave">Save and connect</div><div class="hint" id="lmsg"></div></div>
+  </details></div>
+</div>
 </div>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
 function send(o){try{Bridge.send(JSON.stringify(o))}catch(x){}}
 function buzz(n){try{Bridge.vibrate(n||8)}catch(x){}}
-function setState(s,msg){$('dot').className=s;$('st').textContent=s==='connected'?'Connected':s==='waiting'?'Waiting':'Offline';
+function setStateRaw(s,msg){$('dot').className=s;$('st').textContent=s==='connected'?'Connected':s==='waiting'?'Waiting':'Offline';
   const m=$('msg');if(s==='connected'){m.style.display='none'}else{m.style.display='block';m.textContent=msg||''}}
-window.onNative=function(m){if(m.t==='state')setState(m.s,m.msg);else if(m.t==='ime')setIme(m.on,m.text)};
-$('pill').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'retry'})});
+let tab='tv',tvS={s:'offline',msg:''},pcS={s:'offline',msg:''};
+function render(){const x=tab==='tv'?tvS:pcS;setStateRaw(x.s,x.msg)}
+function fill(id,v){const e=$(id);if(e&&document.activeElement!==e)e.value=v||''}
+window.onNative=function(m){
+  if(m.t==='state'){tvS={s:m.s,msg:m.msg};if(tab==='tv')render()}
+  else if(m.t==='pc'){pcS={s:m.s,msg:m.msg};if(tab==='pc')render()}
+  else if(m.t==='ime')setIme(m.on,m.text)
+  else if(m.t==='cfg'){fill('cip',m.ip);fill('cmac',m.mac)}
+  else if(m.t==='lcfg'){fill('lip',m.ip);fill('lpin',m.pin)}};
+function setTab(t){tab=t;$('tvp').style.display=t==='tv'?'block':'none';$('pcp').style.display=t==='pc'?'block':'none';
+  $('tab_tv').classList.toggle('act',t==='tv');$('tab_pc').classList.toggle('act',t==='pc');render();buzz(8);
+  if(t==='pc')send({t:'lretry'});else send({t:'retry'})}
+$('pill').addEventListener('pointerdown',e=>{e.preventDefault();send({t:tab==='tv'?'retry':'lretry'})});
 
 document.querySelectorAll('[data-k]').forEach(el=>{
   const k=el.dataset.k,rep=el.dataset.rep==='1';let t1=null,t2=null;
   const stop=()=>{el.classList.remove('on');clearTimeout(t1);clearInterval(t2);t1=t2=null};
   el.addEventListener('pointerdown',e=>{e.preventDefault();el.classList.add('on');send({t:'key',k});buzz();
-    if(rep){t1=setTimeout(()=>{t2=setInterval(()=>send({t:'key',k}),140)},420)}});
+    if(rep){t1=setTimeout(()=>{t2=setInterval(()=>send({t:'key',k}),210)},420)}});
   ['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,stop));
 });
 document.querySelectorAll('[data-app]').forEach(el=>{
@@ -147,7 +198,7 @@ tx.addEventListener('input',()=>{const v=tx.value;
 tx.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send({t:'key',k:'KEY_ENTER'})}});
 $('send').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'imeend'});tx.value='';prev='';tx.blur()});
 
-const tp=$('tp'),STEP=38;let pid=null,sx=0,sy=0,lx=0,ly=0,ax=0,ay=0,moved=0,t0=0;
+const tp=$('tp'),STEP=60;let pid=null,sx=0,sy=0,lx=0,ly=0,ax=0,ay=0,moved=0,t0=0;
 tp.addEventListener('pointerdown',e=>{if(pid!==null)return;e.preventDefault();pid=e.pointerId;tp.setPointerCapture(pid);
   sx=lx=e.clientX;sy=ly=e.clientY;ax=ay=0;moved=0;t0=Date.now();tp.classList.add('on')});
 tp.addEventListener('pointermove',e=>{if(e.pointerId!==pid)return;
@@ -166,6 +217,48 @@ $('csave').addEventListener('pointerdown',e=>{e.preventDefault();
   let err='Could not save';try{err=Bridge.saveConfig($('cip').value,$('cmac').value)}catch(x){}
   $('cmsg').textContent=err===''?'Saved. Look at the TV and press Allow if it asks.':err});
 document.addEventListener('contextmenu',e=>e.preventDefault());
+
+$('tab_tv').addEventListener('pointerdown',e=>{e.preventDefault();setTab('tv')});
+$('tab_pc').addEventListener('pointerdown',e=>{e.preventDefault();setTab('pc')});
+const lp=$('lpad'),ptr=new Map();let tapT=0,tapMoved=0,maxPtr=0,accx=0,accy=0,scy=0,raf=0;
+function flush(){raf=0;if(accx||accy){send({t:'lmv',x:Math.round(accx),y:Math.round(accy)});accx=accy=0}
+  if(Math.abs(scy)>=1){send({t:'lscroll',y:Math.round(scy)});scy=0}}
+lp.addEventListener('pointerdown',e=>{e.preventDefault();try{lp.setPointerCapture(e.pointerId)}catch(x){}
+  if(ptr.size===0){tapT=Date.now();tapMoved=0;maxPtr=0}
+  ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});maxPtr=Math.max(maxPtr,ptr.size);lp.classList.add('on')});
+lp.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p)return;
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;tapMoved+=Math.abs(dx)+Math.abs(dy);
+  if(ptr.size>=2){if(e.isPrimary)scy+=dy*4}else{accx+=dx*1.7;accy+=dy*1.7}
+  if(!raf)raf=requestAnimationFrame(flush)});
+const lpEnd=e=>{if(!ptr.has(e.pointerId))return;ptr.delete(e.pointerId);
+  if(ptr.size===0){lp.classList.remove('on');
+    if(e.type==='pointerup'&&tapMoved<12&&Date.now()-tapT<280){send({t:'lclick',b:maxPtr>=2?'r':'l',n:1});buzz(10)}}};
+lp.addEventListener('pointerup',lpEnd);lp.addEventListener('pointercancel',lpEnd);
+function hold(el,fn,rep){let a=null,b=null;const stop=()=>{el.classList.remove('on');clearTimeout(a);clearInterval(b);a=b=null};
+  el.addEventListener('pointerdown',e=>{e.preventDefault();el.classList.add('on');fn();buzz();if(rep)a=setTimeout(()=>{b=setInterval(fn,160)},420)});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,stop))}
+document.querySelectorAll('[data-lclick]').forEach(el=>{const v=el.dataset.lclick;
+  hold(el,()=>send(v==='d'?{t:'lclick',b:'l',n:2}:{t:'lclick',b:v,n:1}),false)});
+document.querySelectorAll('[data-lkey]').forEach(el=>hold(el,()=>send({t:'lkey',k:el.dataset.lkey}),['LEFT','RIGHT','UP','DOWN','BACKSPACE'].includes(el.dataset.lkey)));
+document.querySelectorAll('[data-lhot]').forEach(el=>hold(el,()=>send({t:'lhot',k:el.dataset.lhot}),false));
+document.querySelectorAll('[data-lmedia]').forEach(el=>hold(el,()=>send({t:'lmedia',a:el.dataset.lmedia}),el.dataset.rep==='1'));
+document.querySelectorAll('[data-lsys]').forEach(el=>{const a=el.dataset.lsys,arm=el.dataset.arm==='1',lab=el.textContent;let tm=null;
+  el.addEventListener('pointerdown',e=>{e.preventDefault();
+    if(!arm){send({t:'lsys',a});buzz(20);return}
+    if(el.classList.contains('armed')){clearTimeout(tm);el.classList.remove('armed');el.textContent=lab;send({t:'lsys',a});buzz(30)}
+    else{el.classList.add('armed');el.textContent='Tap again to confirm';tm=setTimeout(()=>{el.classList.remove('armed');el.textContent=lab},3000)}})});
+const lt=$('ltxt');let lprev='';
+lt.addEventListener('input',()=>{const v=lt.value;
+  if(v.startsWith(lprev)){const a=v.slice(lprev.length);if(a)send({t:'ltext',s:a})}
+  else if(lprev.startsWith(v)){for(let i=0;i<lprev.length-v.length;i++)send({t:'lkey',k:'BACKSPACE'})}
+  else{for(let i=0;i<lprev.length;i++)send({t:'lkey',k:'BACKSPACE'});if(v)send({t:'ltext',s:v})}
+  lprev=v});
+lt.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send({t:'lkey',k:'ENTER'})}});
+$('lclr').addEventListener('pointerdown',e=>{e.preventDefault();lt.value='';lprev=''});
+try{const c=JSON.parse(Bridge.getLaptopConfig());$('lip').value=c.ip||'';$('lpin').value=c.pin||'';if(!c.pin)$('lsetd').open=true}catch(x){}
+$('lsave').addEventListener('pointerdown',e=>{e.preventDefault();
+  let err='Could not save';try{err=Bridge.saveLaptopConfig($('lip').value,$('lpin').value)}catch(x){}
+  $('lmsg').textContent=err===''?'Saved. Connecting...':err});
 try{Bridge.ready()}catch(x){}
 })();
 </script></body></html>
