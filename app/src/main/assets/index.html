@@ -25,6 +25,7 @@ h1{font:500 24px/1.1 Georgia,"Times New Roman",serif;margin:0;flex:1;letter-spac
 .b.red{color:var(--bad)}
 #tp{touch-action:none;height:28vh;min-height:170px;border-radius:16px;background:var(--bg);border:1.5px dashed var(--line);display:flex;align-items:center;
   justify-content:center;color:var(--mut);text-align:center;line-height:1.6;font-size:14px}
+#tp.mouse{background:linear-gradient(to left,var(--line) 0,var(--line) 14%,var(--bg) 14%)}
 #tp.on{border-color:var(--acc);background:var(--accbg)}
 #dp{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,56px);gap:8px}
 #dp .b{font-size:20px}#up{grid-area:1/2}#lf{grid-area:2/1}#ok{grid-area:2/2;font-size:16px}#rt{grid-area:2/3}#dn{grid-area:3/2}
@@ -58,7 +59,13 @@ details summary{color:var(--mut);font-size:13px;padding:4px 2px;list-style:none}
   <div class="card"><div class="row r2">
     <div class="b pri" id="pon">Power on</div><div class="b red" id="poff">Power off</div></div></div>
 
-  <div class="card"><div id="tp">Swipe for arrow keys<br>Tap for OK</div></div>
+  <div class="card">
+    <div class="row r3" style="margin-bottom:8px"><div class="b small act" id="m_arrows">Arrows</div><div class="b small" id="m_mouse">Mouse</div><div class="b small" id="m_air">Air mouse</div></div>
+    <div id="tp">Swipe = arrow keys<br>Tap = OK</div>
+    <div id="spd" style="display:none;align-items:center;gap:8px;color:var(--mut);font-size:12px;margin:8px 0 2px">Pointer speed <input id="spv" type="range" min="1" max="5" step="0.2" style="flex:1"></div>
+    <div class="row r2" id="clickrow" style="display:none;margin-top:8px"><div class="b" id="lclick">Left click</div><div class="b" id="rclick">Right click</div></div>
+    <div class="row r2" id="airrow" style="display:none;margin-top:8px"><div class="b small" id="flipx">Flip left/right</div><div class="b small" id="flipy">Flip up/down</div></div>
+  </div>
 
   <div class="card">
     <div id="dp">
@@ -198,19 +205,70 @@ tx.addEventListener('input',()=>{const v=tx.value;
 tx.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send({t:'key',k:'KEY_ENTER'})}});
 $('send').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'imeend'});tx.value='';prev='';tx.blur()});
 
-const tp=$('tp'),STEP=60;let pid=null,sx=0,sy=0,lx=0,ly=0,ax=0,ay=0,moved=0,t0=0;
+const tp=$('tp'),STEP=38;
+let mode='arrows',speed=1.8;
+try{mode=localStorage.getItem('tvMode')||'arrows';speed=+(localStorage.getItem('tvSpeed')||1.8)}catch(x){}
+$('spv').value=speed;
+function setMode(m){mode=m;try{if(m!=='air')localStorage.setItem('tvMode',m)}catch(x){}
+  $('m_arrows').classList.toggle('act',m==='arrows');$('m_mouse').classList.toggle('act',m==='mouse');$('m_air').classList.toggle('act',m==='air');
+  tp.classList.toggle('mouse',m==='mouse');
+  tp.innerHTML=m==='air'?'HOLD your finger here and move the phone<br>like a remote - the pointer follows.<br>Tap = click. Let go to stop.':(m==='mouse'?'Move finger = mouse pointer<br>Tap = click<br>Drag on right strip = scroll':'Swipe = arrow keys<br>Tap = OK');
+  $('spd').style.display=m==='arrows'?'none':'flex';$('airrow').style.display=m==='air'?'grid':'none';$('clickrow').style.display=m==='arrows'?'none':'grid';if(m!=='arrows')send({t:'mousewake'})}
+$('m_arrows').addEventListener('pointerdown',e=>{e.preventDefault();setMode('arrows')});
+$('m_mouse').addEventListener('pointerdown',e=>{e.preventDefault();setMode('mouse')});
+$('m_air').addEventListener('pointerdown',e=>{e.preventDefault();if(airStart())setMode('air')});
+$('spv').addEventListener('input',e=>{speed=+e.target.value;try{localStorage.setItem('tvSpeed',speed)}catch(x){}});
+let pid=null,sx=0,sy=0,lx=0,ly=0,ax=0,ay=0,px=0,py=0,moved=0,t0=0,zone='pad',lastSend=0;
+// ---- air mouse (phone motion -> pointer) ----
+let airHeld=false,airLast=0,flipX=false,flipY=false;
+try{flipX=localStorage.getItem('tvFlipX')==='1';flipY=localStorage.getItem('tvFlipY')==='1'}catch(x){}
+function paintFlips(){$('flipx').classList.toggle('act',flipX);$('flipy').classList.toggle('act',flipY)}
+paintFlips();
+$('flipx').addEventListener('pointerdown',e=>{e.preventDefault();flipX=!flipX;try{localStorage.setItem('tvFlipX',flipX?'1':'0')}catch(x){}paintFlips()});
+$('flipy').addEventListener('pointerdown',e=>{e.preventDefault();flipY=!flipY;try{localStorage.setItem('tvFlipY',flipY?'1':'0')}catch(x){}paintFlips()});
+let airReady=false;
+$('lclick').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'click',b:'left'});buzz(12)});
+$('rclick').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'click',b:'right'});buzz(12)});
+function airStart(){
+  if(airReady)return true;
+  window.addEventListener('devicemotion',onMotion);airReady=true;setMode('air');return false;
+}
+function onMotion(e){
+  if(mode!=='air'||!airHeld)return;
+  const g=e.accelerationIncludingGravity,r=e.rotationRate;if(!g||!r)return;
+  const now=performance.now();let dt=(now-airLast)/1000;airLast=now;if(dt<=0||dt>0.2)dt=0.016;
+  const x=g.x||0,y=g.y||0,z=g.z||0;
+  const n=Math.hypot(x,y,z)||1;
+  const wx=r.beta||0,wy=r.gamma||0,wz=r.alpha||0;           // deg/s about phone x (side), y (top), z (screen)
+  const yaw=(wx*x+wy*y+wz*z)/n, pitch=wx;                    // turn left/right (about gravity), tilt up/down
+  const k=6*speed;
+  px+=(flipX?1:-1)*yaw*dt*k; py+=(flipY?1:-1)*pitch*dt*k;
+  if(now-lastSend>=25){const mx=Math.round(px),my=Math.round(py);
+    if(mx||my){send({t:'move',dx:mx,dy:my});px-=mx;py-=my}lastSend=now}
+}
 tp.addEventListener('pointerdown',e=>{if(pid!==null)return;e.preventDefault();pid=e.pointerId;tp.setPointerCapture(pid);
-  sx=lx=e.clientX;sy=ly=e.clientY;ax=ay=0;moved=0;t0=Date.now();tp.classList.add('on')});
+  const r=tp.getBoundingClientRect();
+  zone=(mode==='mouse'&&e.clientX>r.right-r.width*0.14)?'scroll':'pad';airHeld=(mode==='air');airLast=performance.now();
+  sx=lx=e.clientX;sy=ly=e.clientY;ax=ay=px=py=0;moved=0;t0=Date.now();tp.classList.add('on')});
 tp.addEventListener('pointermove',e=>{if(e.pointerId!==pid)return;
   const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;moved=Math.max(moved,Math.hypot(lx-sx,ly-sy));
-  ax+=dx;ay+=dy;let g=0;
-  while(g++<6&&(Math.abs(ax)>=STEP||Math.abs(ay)>=STEP)){
+  if(mode==='air')return;
+  if(mode==='mouse'){
+    if(zone==='scroll'){ay+=dy;let g=0;while(g++<6&&Math.abs(ay)>=28){send({t:'key',k:ay>0?'KEY_DOWN':'KEY_UP'});ay-=Math.sign(ay)*28}return}
+    px+=dx*speed;py+=dy*speed;const now=performance.now();
+    if(now-lastSend>=25){const mx=Math.round(px),my=Math.round(py);
+      if(mx||my){send({t:'move',dx:mx,dy:my});px-=mx;py-=my}lastSend=now}
+    return}
+  ax+=dx;ay+=dy;let guard=0;
+  while(guard++<6&&(Math.abs(ax)>=STEP||Math.abs(ay)>=STEP)){
     if(Math.abs(ax)>=Math.abs(ay)){send({t:'key',k:ax>0?'KEY_RIGHT':'KEY_LEFT'});ax-=Math.sign(ax)*STEP;ay*=0.5}
     else{send({t:'key',k:ay>0?'KEY_DOWN':'KEY_UP'});ay-=Math.sign(ay)*STEP;ax*=0.5}
-    buzz(5)}});
-const tpEnd=e=>{if(e.pointerId!==pid)return;pid=null;tp.classList.remove('on');
-  if(e.type==='pointerup'&&moved<10&&Date.now()-t0<350){send({t:'key',k:'KEY_ENTER'});buzz(12)}};
+    buzz(5);
+  }});
+const tpEnd=e=>{if(e.pointerId!==pid)return;pid=null;airHeld=false;tp.classList.remove('on');
+  if(e.type==='pointerup'&&moved<10&&Date.now()-t0<350&&zone==='pad'){send(mode==='arrows'?{t:'key',k:'KEY_ENTER'}:{t:'click',b:'left'});buzz(12)}};
 tp.addEventListener('pointerup',tpEnd);tp.addEventListener('pointercancel',tpEnd);
+setMode(mode);
 
 try{const c=JSON.parse(Bridge.getConfig());$('cip').value=c.ip||'';$('cmac').value=c.mac||'';if(!c.ip)$('setd').open=true}catch(x){}
 $('csave').addEventListener('pointerdown',e=>{e.preventDefault();
