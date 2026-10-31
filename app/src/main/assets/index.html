@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>TV Remote</title>
+<style>
+:root{--bg:#F5F4EE;--card:#FFFFFF;--line:#E6E3D8;--fg:#1F1E1D;--mut:#7B766B;--acc:#D97757;--accd:#C6613F;--accbg:#FBEDE6;--ok:#4F8A5B;--bad:#C0453A;--warn:#C98A1B}
+@media(prefers-color-scheme:dark){:root{--bg:#262624;--card:#30302E;--line:#41403D;--fg:#F0EEE6;--mut:#A39E92;--acc:#E08A68;--accd:#D97757;--accbg:#3B2E28;--ok:#7DB88A;--bad:#E8756A;--warn:#E0B04A}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+#app{max-width:480px;margin:0 auto;padding:14px 14px 28px}
+header{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
+.logo{color:var(--acc);font-size:26px;line-height:1}
+h1{font:500 24px/1.1 Georgia,"Times New Roman",serif;margin:0;flex:1;letter-spacing:-.01em}
+#pill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:12px;color:var(--mut)}
+#dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none}#dot.connected{background:var(--ok)}#dot.waiting{background:var(--warn)}
+#msg{display:none;background:var(--accbg);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:12px;color:var(--fg);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:12px;margin-bottom:12px}
+.lbl{font:500 12px/1 system-ui,sans-serif;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;margin:2px 2px 10px}
+.row{display:grid;gap:8px}.r2{grid-template-columns:repeat(2,1fr)}.r3{grid-template-columns:repeat(3,1fr)}.r4{grid-template-columns:repeat(4,1fr)}
+.b{display:flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--line);border-radius:14px;min-height:50px;font-weight:600;
+  color:var(--fg);padding:0 8px;text-align:center;font-size:14px;transition:transform .06s,background .1s}
+.b.on{transform:scale(.95);background:var(--accbg);border-color:var(--acc)}
+.b.pri{background:var(--acc);border-color:var(--acc);color:#fff}.b.pri.on{background:var(--accd)}
+.b.small{min-height:40px;font-size:13px;border-radius:12px}.b.act{background:var(--accbg);border-color:var(--acc);color:var(--accd)}
+.b.red{color:var(--bad)}
+#tp{touch-action:none;height:28vh;min-height:170px;border-radius:16px;background:var(--bg);border:1.5px dashed var(--line);display:flex;align-items:center;
+  justify-content:center;color:var(--mut);text-align:center;line-height:1.6;font-size:14px}
+#tp.on{border-color:var(--acc);background:var(--accbg)}
+#dp{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,56px);gap:8px}
+#dp .b{font-size:20px}#up{grid-area:1/2}#lf{grid-area:2/1}#ok{grid-area:2/2;font-size:16px}#rt{grid-area:2/3}#dn{grid-area:3/2}
+.vc{display:grid;grid-template-columns:1fr 1fr;gap:8px}.col{display:grid;gap:8px;grid-template-rows:repeat(3,48px)}
+.col .t{display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:11px;letter-spacing:.1em}
+#tx{display:flex;gap:8px}
+#tx input,.f input{flex:1;min-width:0;-webkit-user-select:text;user-select:text;background:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:14px;padding:0 14px;min-height:50px;font-size:16px;font-family:inherit;outline:none}
+#tx input:focus,.f input:focus{border-color:var(--acc)}#tx.live input{border-color:var(--ok);box-shadow:0 0 0 3px rgba(79,138,91,.2)}
+.hint{color:var(--mut);font-size:12px;margin:8px 2px 0}
+.apps .b{font-size:13px}
+details summary{color:var(--mut);font-size:13px;padding:4px 2px;list-style:none}details summary::-webkit-details-marker{display:none}
+.f{display:grid;gap:8px;margin-top:10px}.f label{font-size:12px;color:var(--mut);margin-bottom:-4px}
+</style></head><body>
+<div id="app">
+  <header><span class="logo">&#10059;</span><h1>TV Remote</h1><div id="pill"><div id="dot"></div><span id="st">Connecting</span></div></header>
+  <div id="msg"></div>
+
+  <div class="card"><div class="row r2">
+    <div class="b pri" id="pon">Power on</div><div class="b red" id="poff">Power off</div></div></div>
+
+  <div class="card"><div id="tp">Swipe for arrow keys<br>Tap for OK</div></div>
+
+  <div class="card">
+    <div id="dp">
+      <div class="b" id="up" data-k="KEY_UP" data-rep="1">&#9650;</div>
+      <div class="b" id="lf" data-k="KEY_LEFT" data-rep="1">&#9664;</div>
+      <div class="b pri" id="ok" data-k="KEY_ENTER">OK</div>
+      <div class="b" id="rt" data-k="KEY_RIGHT" data-rep="1">&#9654;</div>
+      <div class="b" id="dn" data-k="KEY_DOWN" data-rep="1">&#9660;</div>
+    </div>
+    <div class="row r4" style="margin-top:8px">
+      <div class="b" data-k="KEY_RETURN">Back</div><div class="b" data-k="KEY_HOME">Home</div>
+      <div class="b" data-k="KEY_MENU">Menu</div><div class="b" data-k="KEY_SOURCE">Source</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="vc">
+      <div class="col"><div class="b" data-k="KEY_VOLUP" data-rep="1">Vol +</div><div class="t">VOLUME</div><div class="b" data-k="KEY_VOLDOWN" data-rep="1">Vol &minus;</div></div>
+      <div class="col"><div class="b" data-k="KEY_CHUP" data-rep="1">Ch +</div><div class="t">CHANNEL</div><div class="b" data-k="KEY_CHDOWN" data-rep="1">Ch &minus;</div></div>
+    </div>
+    <div class="row r3" style="margin-top:8px">
+      <div class="b" data-k="KEY_MUTE">Mute</div><div class="b" data-k="KEY_INFO">Info</div><div class="b" data-k="KEY_GUIDE">Guide</div>
+    </div>
+    <div class="row r4" style="margin-top:8px">
+      <div class="b" data-k="KEY_REWIND">&#9194;</div><div class="b" data-k="KEY_PLAY">&#9654;</div>
+      <div class="b" data-k="KEY_PAUSE">&#10074;&#10074;</div><div class="b" data-k="KEY_FF">&#9193;</div>
+    </div>
+  </div>
+
+  <div class="card"><div class="lbl">Apps</div>
+    <div class="row r2 apps">
+      <div class="b" data-app="111299001912">YouTube</div><div class="b" data-app="3201907018807">Netflix</div>
+      <div class="b" data-app="3201910019365">Prime Video</div><div class="b" data-app="3201901017640">Hotstar</div>
+    </div>
+  </div>
+
+  <div class="card"><div class="lbl">Type on TV</div>
+    <div class="row r2" style="margin-bottom:8px"><div class="b small act" id="k_live">Live typing</div><div class="b small" id="k_grid">YouTube keyboard</div></div>
+    <div class="row" id="gridrow" style="display:none;margin-bottom:8px"><div class="b small" id="k_reset">TV cursor is on letter A &mdash; start here</div></div>
+    <div id="tx"><input id="txt" type="text" placeholder="Type here, it goes to the TV" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+      <div class="b pri" id="send" style="min-width:76px">Done</div></div>
+    <div class="hint" id="txhint"></div>
+  </div>
+
+  <div class="card"><details><summary>Number pad</summary><div class="row r3" style="margin-top:8px">
+    <div class="b" data-k="KEY_1">1</div><div class="b" data-k="KEY_2">2</div><div class="b" data-k="KEY_3">3</div>
+    <div class="b" data-k="KEY_4">4</div><div class="b" data-k="KEY_5">5</div><div class="b" data-k="KEY_6">6</div>
+    <div class="b" data-k="KEY_7">7</div><div class="b" data-k="KEY_8">8</div><div class="b" data-k="KEY_9">9</div>
+    <div class="b" style="visibility:hidden"></div><div class="b" data-k="KEY_0">0</div><div class="b" data-k="KEY_ENTER">Enter</div>
+  </div></details></div>
+
+  <div class="card"><details id="setd"><summary>TV settings</summary>
+    <div class="f"><label>TV IP address (on the TV: Settings &gt; Network)</label><input id="cip" inputmode="decimal" placeholder="192.168.0.101">
+      <label>TV MAC address (only needed for Power on)</label><input id="cmac" placeholder="AA:BB:CC:DD:EE:FF">
+      <div class="b pri" id="csave">Save and reconnect</div><div class="hint" id="cmsg"></div></div>
+  </details></div>
+</div>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+function send(o){try{Bridge.send(JSON.stringify(o))}catch(x){}}
+function buzz(n){try{Bridge.vibrate(n||8)}catch(x){}}
+function setState(s,msg){$('dot').className=s;$('st').textContent=s==='connected'?'Connected':s==='waiting'?'Waiting':'Offline';
+  const m=$('msg');if(s==='connected'){m.style.display='none'}else{m.style.display='block';m.textContent=msg||''}}
+window.onNative=function(m){if(m.t==='state')setState(m.s,m.msg);else if(m.t==='ime')setIme(m.on,m.text)};
+$('pill').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'retry'})});
+
+document.querySelectorAll('[data-k]').forEach(el=>{
+  const k=el.dataset.k,rep=el.dataset.rep==='1';let t1=null,t2=null;
+  const stop=()=>{el.classList.remove('on');clearTimeout(t1);clearInterval(t2);t1=t2=null};
+  el.addEventListener('pointerdown',e=>{e.preventDefault();el.classList.add('on');send({t:'key',k});buzz();
+    if(rep){t1=setTimeout(()=>{t2=setInterval(()=>send({t:'key',k}),140)},420)}});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,stop));
+});
+document.querySelectorAll('[data-app]').forEach(el=>{
+  el.addEventListener('pointerdown',e=>{e.preventDefault();el.classList.add('on');send({t:'app',id:el.dataset.app});buzz(12)});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,()=>el.classList.remove('on')));
+});
+$('pon').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'poweron'});buzz(20)});
+$('poff').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'poweroff'});buzz(20)});
+
+const tx=$('txt');let prev='',kbmode='live';
+function hint(on){$('txhint').textContent=kbmode==='grid'?'Move the TV cursor onto the letter A, tap the button above, then type here. The phone presses the TV keys for you.':
+  (on?'TV text box is open: just type, it appears on the TV.':'To type: select the search box on the TV with OK, then type here.')}
+function setIme(on,text){$('tx').classList.toggle('live',!!on);hint(on);
+  if(on&&kbmode==='live'){tx.value=text||'';prev=tx.value;try{tx.focus()}catch(e){}buzz(30)}}
+hint(false);
+function setKb(m){kbmode=m;$('k_live').classList.toggle('act',m==='live');$('k_grid').classList.toggle('act',m==='grid');
+  $('gridrow').style.display=m==='grid'?'grid':'none';tx.value='';prev='';hint(false)}
+$('k_live').addEventListener('pointerdown',e=>{e.preventDefault();setKb('live')});
+$('k_grid').addEventListener('pointerdown',e=>{e.preventDefault();setKb('grid')});
+$('k_reset').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'gridreset'});tx.value='';prev='';try{tx.focus()}catch(x){}buzz(15)});
+tx.addEventListener('input',()=>{const v=tx.value;
+  if(kbmode==='live'){send({t:'text',s:v})}
+  else if(v.startsWith(prev)){const add=v.slice(prev.length);if(add)send({t:'grid',s:add})}
+  else if(prev.startsWith(v)){send({t:'grid',bs:prev.length-v.length})}
+  prev=v});
+tx.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send({t:'key',k:'KEY_ENTER'})}});
+$('send').addEventListener('pointerdown',e=>{e.preventDefault();send({t:'imeend'});tx.value='';prev='';tx.blur()});
+
+const tp=$('tp'),STEP=38;let pid=null,sx=0,sy=0,lx=0,ly=0,ax=0,ay=0,moved=0,t0=0;
+tp.addEventListener('pointerdown',e=>{if(pid!==null)return;e.preventDefault();pid=e.pointerId;tp.setPointerCapture(pid);
+  sx=lx=e.clientX;sy=ly=e.clientY;ax=ay=0;moved=0;t0=Date.now();tp.classList.add('on')});
+tp.addEventListener('pointermove',e=>{if(e.pointerId!==pid)return;
+  const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;moved=Math.max(moved,Math.hypot(lx-sx,ly-sy));
+  ax+=dx;ay+=dy;let g=0;
+  while(g++<6&&(Math.abs(ax)>=STEP||Math.abs(ay)>=STEP)){
+    if(Math.abs(ax)>=Math.abs(ay)){send({t:'key',k:ax>0?'KEY_RIGHT':'KEY_LEFT'});ax-=Math.sign(ax)*STEP;ay*=0.5}
+    else{send({t:'key',k:ay>0?'KEY_DOWN':'KEY_UP'});ay-=Math.sign(ay)*STEP;ax*=0.5}
+    buzz(5)}});
+const tpEnd=e=>{if(e.pointerId!==pid)return;pid=null;tp.classList.remove('on');
+  if(e.type==='pointerup'&&moved<10&&Date.now()-t0<350){send({t:'key',k:'KEY_ENTER'});buzz(12)}};
+tp.addEventListener('pointerup',tpEnd);tp.addEventListener('pointercancel',tpEnd);
+
+try{const c=JSON.parse(Bridge.getConfig());$('cip').value=c.ip||'';$('cmac').value=c.mac||'';if(!c.ip)$('setd').open=true}catch(x){}
+$('csave').addEventListener('pointerdown',e=>{e.preventDefault();
+  let err='Could not save';try{err=Bridge.saveConfig($('cip').value,$('cmac').value)}catch(x){}
+  $('cmsg').textContent=err===''?'Saved. Look at the TV and press Allow if it asks.':err});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+try{Bridge.ready()}catch(x){}
+})();
+</script></body></html>
