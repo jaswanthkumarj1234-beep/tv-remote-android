@@ -428,6 +428,86 @@ public class TvClient {
         });
     }
 
+    // ---------------- mouse pointer (coalesced, so it stays smooth and never lags) ----------------
+    private final AtomicInteger movX = new AtomicInteger(0);
+    private final AtomicInteger movY = new AtomicInteger(0);
+    private final AtomicInteger moveQueued = new AtomicInteger(0);
+    private volatile long lastMove = 0;
+
+    private JSONObject moveMsg(int dx, int dy) {
+        try {
+            JSONObject pos = new JSONObject().put("x", dx).put("y", dy)
+                    .put("Time", String.valueOf(System.currentTimeMillis()));
+            JSONObject params = new JSONObject().put("Cmd", "Move").put("Position", pos)
+                    .put("TypeOfRemote", "ProcessMouseDevice");
+            return new JSONObject().put("method", "ms.remote.control").put("params", params);
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    /** The TV shows its pointer after it receives a couple of zero moves. */
+    private void wakePointer() {
+        for (int i = 0; i < 2; i++) {
+            send(moveMsg(0, 0));
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ignored) {
+            }
+        }
+        lastMove = System.currentTimeMillis();
+    }
+
+    public void mouseWake() {
+        if (!connected) {
+            return;
+        }
+        cmd.execute(this::wakePointer);
+    }
+
+    /** Relative pointer move. Moves that arrive while one is being sent are merged into the next one. */
+    public void move(int dx, int dy) {
+        if (!connected) {
+            return;
+        }
+        movX.addAndGet(dx);
+        movY.addAndGet(dy);
+        if (moveQueued.getAndSet(1) == 0) {
+            cmd.execute(() -> {
+                try {
+                    int x = Math.max(-300, Math.min(300, movX.getAndSet(0)));
+                    int y = Math.max(-300, Math.min(300, movY.getAndSet(0)));
+                    if (x == 0 && y == 0) {
+                        return;
+                    }
+                    long now = System.currentTimeMillis();
+                    if (now - lastMove > 3000) {
+                        wakePointer();
+                    }
+                    lastMove = now;
+                    send(moveMsg(x, y));
+                } finally {
+                    moveQueued.set(0);
+                    if (movX.get() != 0 || movY.get() != 0) {
+                        move(0, 0);
+                    }
+                }
+            });
+        }
+    }
+
+    public void mouseClick(final boolean right) {
+        cmd.execute(() -> {
+            try {
+                JSONObject params = new JSONObject()
+                        .put("Cmd", right ? "RightClick" : "LeftClick")
+                        .put("TypeOfRemote", "ProcessMouseDevice");
+                send(new JSONObject().put("method", "ms.remote.control").put("params", params));
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
     public void text(String s) {
         final String t = s.length() > 200 ? s.substring(0, 200) : s;
         cmd.execute(() -> send(remote(
