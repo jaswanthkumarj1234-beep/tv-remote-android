@@ -22,6 +22,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private TvClient tv;
+    private LaptopClient pc;
     private Vibrator vib;
 
     @Override
@@ -53,6 +54,26 @@ public class MainActivity extends Activity {
             @Override public void onIme(boolean on, String text) {
                 try {
                     push(new JSONObject().put("t", "ime").put("on", on).put("text", text));
+                } catch (Exception ignored) {
+                }
+            }
+            @Override public void onConfig() {
+                try {
+                    push(new JSONObject(tv.getConfigJson()).put("t", "cfg"));
+                } catch (Exception ignored) {
+                }
+            }
+        });
+        pc = new LaptopClient(prefs, new LaptopClient.Listener() {
+            @Override public void onState(String state, String msg) {
+                try {
+                    push(new JSONObject().put("t", "pc").put("s", state).put("msg", msg));
+                } catch (Exception ignored) {
+                }
+            }
+            @Override public void onConfig() {
+                try {
+                    push(new JSONObject(pc.getConfigJson()).put("t", "lcfg"));
                 } catch (Exception ignored) {
                 }
             }
@@ -90,20 +111,35 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (tv != null) {
+            tv.resume();
+        }
+        if (pc != null) {
+            pc.resume();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         if (tv != null) {
             tv.shutdown();
         }
+        if (pc != null) {
+            pc.shutdown();
+        }
         super.onDestroy();
     }
 
-    /** Called from the page's JavaScript. Only whitelisted commands are forwarded to the TV. */
+    /** Called from the page's JavaScript. Only whitelisted commands are forwarded. */
     public class Bridge {
         @JavascriptInterface
         public void send(String json) {
             try {
                 JSONObject d = new JSONObject(json);
-                switch (d.optString("t", "")) {
+                String t = d.optString("t", "");
+                switch (t) {
                     case "key": tv.key(d.optString("k", "")); break;
                     case "text": tv.text(d.optString("s", "")); break;
                     case "app": tv.app(d.optString("id", "")); break;
@@ -119,6 +155,12 @@ public class MainActivity extends Activity {
                     case "poweron": tv.powerOn(); break;
                     case "poweroff": tv.powerOff(); break;
                     case "retry": tv.retry(); break;
+                    case "lretry": pc.retry(); break;
+                    case "lmv": case "lclick": case "lscroll": case "lkey":
+                    case "lhot": case "ltext": case "lmedia": case "lsys":
+                        d.put("t", t.substring(1));
+                        pc.cmd(d.toString());
+                        break;
                     default: break;
                 }
             } catch (Exception ignored) {
@@ -128,6 +170,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void ready() {
             tv.snapshot();
+            pc.snapshot();
         }
 
         @JavascriptInterface
@@ -138,6 +181,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String saveConfig(String ip, String mac) {
             return tv.saveConfig(ip, mac);
+        }
+
+        @JavascriptInterface
+        public String getLaptopConfig() {
+            return pc.getConfigJson();
+        }
+
+        @JavascriptInterface
+        public String saveLaptopConfig(String ip, String pin) {
+            return pc.saveConfig(ip, pin);
         }
 
         @JavascriptInterface
