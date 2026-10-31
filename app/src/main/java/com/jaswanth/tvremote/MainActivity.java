@@ -152,6 +152,9 @@ public class MainActivity extends Activity {
                         break;
                     case "gridreset": tv.gridReset(); break;
                     case "imeend": tv.imeEnd(); break;
+                    case "move": tv.move(d.optInt("dx", 0), d.optInt("dy", 0)); break;
+                    case "click": tv.mouseClick("right".equals(d.optString("b", "left"))); break;
+                    case "mousewake": tv.mouseWake(); break;
                     case "poweron": tv.powerOn(); break;
                     case "poweroff": tv.powerOff(); break;
                     case "retry": tv.retry(); break;
