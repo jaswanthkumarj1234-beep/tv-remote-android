@@ -1,28 +1,22 @@
 # TV Remote for Android (Samsung smart TVs)
 
-Turn your Android phone into a remote for a Samsung Tizen TV. It runs **on the phone itself** and talks straight to the TV over home Wi-Fi: no computer, no cloud, no account.
+A real Android app. Your phone talks **straight to the TV over home Wi-Fi**. No computer, no cloud, no account.
 
-Features: power on/off, touchpad, arrow keys, volume/channel, app shortcuts (YouTube, Netflix, Prime Video, Hotstar), live typing into TV search boxes, a YouTube keyboard helper, and a number pad.
+Power on/off, touchpad, arrow keys, volume/channel, app shortcuts (YouTube, Netflix, Prime Video, Hotstar), live typing into TV search boxes, a YouTube keyboard helper and a number pad.
 
-## Install (about 5 minutes)
+## Download
 
-1. Install **Termux** and **Termux:Boot** from **F-Droid** (not the Play Store). Open each once.
-2. In Termux, paste this one line:
+**[Download TVRemote.apk](https://github.com/jaswanthkumarj1234-beep/tv-remote-android/releases/latest/download/TVRemote.apk)**
 
-   ```
-   curl -fsSL https://raw.githubusercontent.com/jaswanthkumarj1234-beep/tv-remote-android/main/setup.sh | tr -d '\r' > setup.sh && bash setup.sh
-   ```
-3. Open Chrome on the same phone and go to `http://localhost:8767`, then menu > **Add to Home screen**.
-4. Open **TV settings** on that page and enter the TV's IP address (TV: Settings > Network) and, for Power on, its MAC address. Tap **Save and reconnect**.
-5. When the TV shows **Allow**, press it with the TV's own remote.
-6. In Android settings, turn off battery optimization for Termux so it keeps running.
-
-After this the app starts by itself whenever the phone boots.
+1. Open the link above on your Android phone and download the file.
+2. Open it. If Android asks, allow "Install unknown apps" for your browser, then tap Install.
+3. Open **TV Remote**. Under **TV settings**, enter the TV's IP address (on the TV: Settings > Network) and tap **Save and reconnect**.
+4. When the TV shows **Allow**, press it with the TV's own remote. This is only needed once per phone.
 
 ## Notes
 
-- The phone and TV must be on the same Wi-Fi.
-- **Power on** uses Wake-on-LAN and only works if the TV has it enabled (often "Power On with Mobile" in network settings).
-- It cannot show a mouse pointer system-wide: Samsung's TV software does not allow it.
-- The app only listens on the phone (127.0.0.1) and rejects requests from other websites, so others on your Wi-Fi cannot use it.
-- Each phone appears on the TV as "AndroidPad" and asks for Allow once.
+- Phone and TV must be on the same Wi-Fi.
+- **Power on** uses Wake-on-LAN, so it needs the TV's MAC address in TV settings and Wake-on-LAN enabled on the TV (often called "Power On with Mobile").
+- Samsung does not allow a system-wide mouse pointer, so there is none.
+- To update, download the new APK and install over the old one. If Android refuses (different signing key), uninstall the old app first.
+- The app is built automatically by GitHub Actions from this source code.
