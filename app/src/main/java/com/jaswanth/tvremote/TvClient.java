@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -31,12 +32,13 @@ import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
-/** Talks straight to a Samsung Tizen TV over the home Wi-Fi (wss://TV:8002). */
+/** Talks straight to a Samsung Tizen TV over the home Wi-Fi (wss://TV:8002). Finds the TV by itself if its IP changes. */
 public class TvClient {
 
     public interface Listener {
         void onState(String state, String msg);
         void onIme(boolean on, String text);
+        void onConfig();
     }
 
     private static final String[] GRID = {"ABCDEFG", "HIJKLMN", "OPQRSTU", "VWXYZ_'"};
@@ -47,13 +49,21 @@ public class TvClient {
     private final SharedPreferences prefs;
     private final Listener listener;
     private final OkHttpClient http;
+    private final OkHttpClient probeHttp;
     private final ExecutorService cmd = Executors.newSingleThreadExecutor();
     private final ExecutorService gridExec = Executors.newSingleThreadExecutor();
+    private final ExecutorService linkExec = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService sup = Executors.newSingleThreadScheduledExecutor();
     private final Object connLock = new Object();
+    private final AtomicBoolean linkQueued = new AtomicBoolean(false);
+    private final AtomicInteger pending = new AtomicInteger(0);
 
     private volatile WebSocket ws;
     private volatile boolean connected = false;
+    private volatile boolean powering = false;
+    private volatile boolean forceScan = false;
+    private volatile long lastScan = 0;
+    private volatile CountDownLatch readyLatch = new CountDownLatch(1);
     private volatile boolean ime = false;
     private volatile String state = "offline";
     private volatile String stateMsg = "Starting...";
@@ -65,7 +75,7 @@ public class TvClient {
         this.listener = listener;
         OkHttpClient client;
         try {
-            // The TV uses a self-signed certificate. This client only ever talks to the TV address the user typed in.
+            // The TV uses a self-signed certificate. This client only ever talks to the TV on the home network.
             final X509TrustManager trustAll = new X509TrustManager() {
                 @Override public void checkClientTrusted(X509Certificate[] chain, String authType) { }
                 @Override public void checkServerTrusted(X509Certificate[] chain, String authType) { }
@@ -76,18 +86,25 @@ public class TvClient {
             client = new OkHttpClient.Builder()
                     .sslSocketFactory(sc.getSocketFactory(), trustAll)
                     .hostnameVerifier((host, session) -> true)
-                    .connectTimeout(8, TimeUnit.SECONDS)
+                    .connectTimeout(4, TimeUnit.SECONDS)
                     .readTimeout(0, TimeUnit.MILLISECONDS)
+                    .pingInterval(5, TimeUnit.SECONDS) // notices a dead connection within seconds
                     .build();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
         this.http = client;
+        this.probeHttp = client.newBuilder()
+                .pingInterval(0, TimeUnit.MILLISECONDS)
+                .connectTimeout(1500, TimeUnit.MILLISECONDS)
+                .readTimeout(2000, TimeUnit.MILLISECONDS)
+                .callTimeout(3000, TimeUnit.MILLISECONDS)
+                .build();
         sup.scheduleWithFixedDelay(() -> {
-            if (!connected) {
-                cmd.execute(() -> connect());
+            if (!connected && !powering) {
+                requestConnect();
             }
-        }, 1, 15, TimeUnit.SECONDS);
+        }, 1, 6, TimeUnit.SECONDS);
     }
 
     // ---------------- state ----------------
@@ -105,25 +122,116 @@ public class TvClient {
         listener.onIme(ime, "");
     }
 
+    // ---------------- finding the TV ----------------
+    private String[] probe(String host) {
+        if (!Net.portOpen(host, 8002, 400)) {
+            return null;
+        }
+        try (Response r = probeHttp.newCall(new Request.Builder().url("https://" + host + ":8002/api/v2/").build()).execute()) {
+            if (!r.isSuccessful() || r.body() == null) {
+                return null;
+            }
+            JSONObject dev = new JSONObject(r.body().string()).optJSONObject("device");
+            if (dev == null || !dev.optString("type", "").contains("Samsung")) {
+                return null;
+            }
+            return new String[]{host, dev.optString("wifiMac", "")};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String discover(String wantMac) {
+        String[] li = Net.localInfo();
+        if (li == null) {
+            return null;
+        }
+        lastScan = System.currentTimeMillis();
+        setState("offline", "Looking for the TV on Wi-Fi...");
+        String want = Net.norm(wantMac);
+        List<String[]> hits = Net.scan(li[0], this::probe);
+        for (String[] h : hits) {
+            if (!want.isEmpty() && Net.norm(h[1]).equals(want)) {
+                return h[0];
+            }
+        }
+        return (want.isEmpty() && !hits.isEmpty()) ? hits.get(0)[0] : null;
+    }
+
+    private String resolveIp() {
+        String ip = prefs.getString("ip", "");
+        String mac = prefs.getString("mac", "");
+        if (!ip.isEmpty() && Net.portOpen(ip, 8002, 1500)) {
+            return ip;
+        }
+        long now = System.currentTimeMillis();
+        if (forceScan || now - lastScan > 30000) {
+            forceScan = false;
+            String found = discover(mac);
+            if (found != null) {
+                if (!found.equals(ip)) {
+                    prefs.edit().putString("ip", found).apply();
+                    listener.onConfig();
+                }
+                return found;
+            }
+        }
+        setState("offline", "TV is off or not on this Wi-Fi. Tap Power on, or switch it on with its remote.");
+        return null;
+    }
+
+    private void learnMac(final String ip) {
+        new Thread(() -> {
+            String[] r = probe(ip);
+            SharedPreferences.Editor e = prefs.edit();
+            boolean changed = false;
+            if (!ip.equals(prefs.getString("ip", ""))) {
+                e.putString("ip", ip);
+                changed = true;
+            }
+            if (r != null && !r[1].isEmpty() && !Net.norm(r[1]).equals(Net.norm(prefs.getString("mac", "")))) {
+                e.putString("mac", r[1].toUpperCase());
+                changed = true;
+            }
+            if (changed) {
+                e.apply();
+                listener.onConfig();
+            }
+        }).start();
+    }
+
     // ---------------- connection ----------------
-    public boolean connect() {
+    private void requestConnect() {
+        if (linkQueued.compareAndSet(false, true)) {
+            linkExec.execute(() -> {
+                try {
+                    connect();
+                } finally {
+                    linkQueued.set(false);
+                }
+            });
+        }
+    }
+
+    private boolean connect() {
         synchronized (connLock) {
             if (connected) {
                 return true;
             }
-            String ip = prefs.getString("ip", "");
-            if (ip.isEmpty()) {
-                setState("offline", "First time: open TV settings below and enter your TV IP address");
+            String ip = resolveIp();
+            if (ip == null) {
                 return false;
             }
             String name = Base64.encodeToString("AndroidPad".getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
             for (int attempt = 1; attempt <= 2; attempt++) {
-                String tok = prefs.getString("token", "");
+                final String tok = prefs.getString("token", "");
                 String url = "wss://" + ip + ":8002/api/v2/channels/samsung.remote.control?name=" + name;
                 if (!tok.isEmpty()) {
                     url += "&token=" + tok;
                 }
                 final CountDownLatch latch = new CountDownLatch(1);
+                final CountDownLatch ready = new CountDownLatch(1);
+                readyLatch = ready;
                 final AtomicInteger result = new AtomicInteger(0); // 1 ok, 2 refused, 3 failed
                 final boolean[] opened = {false};
                 WebSocket sock;
@@ -131,7 +239,7 @@ public class TvClient {
                     sock = http.newWebSocket(new Request.Builder().url(url).build(), new WebSocketListener() {
                         @Override public void onOpen(WebSocket w, Response r) {
                             opened[0] = true;
-                            setState("waiting", "Press ALLOW on the TV using its own remote");
+                            setState("waiting", tok.isEmpty() ? "Press ALLOW on the TV using its own remote" : "Connecting to the TV...");
                         }
                         @Override public void onMessage(WebSocket w, String text) {
                             handleMessage(text, result, latch);
@@ -144,7 +252,7 @@ public class TvClient {
                         }
                     });
                 } catch (Exception e) {
-                    setState("offline", "Check the TV IP address in TV settings");
+                    setState("offline", "Could not reach the TV");
                     return false;
                 }
                 boolean done;
@@ -157,8 +265,15 @@ public class TvClient {
                 if (done && result.get() == 1) {
                     ws = sock;
                     connected = true;
-                    setState("connected", "TV connected");
-                    return true;
+                    try {
+                        ready.await(1500, TimeUnit.MILLISECONDS); // some TVs send "ready" a moment later
+                    } catch (InterruptedException ignored) {
+                    }
+                    if (connected) {
+                        setState("connected", "TV connected");
+                        learnMac(ip);
+                    }
+                    return connected;
                 }
                 sock.cancel();
                 if (!opened[0]) {
@@ -199,7 +314,9 @@ public class TvClient {
             if (result.get() != 1) {
                 return;
             }
-            if ("ms.remote.imeStart".equals(ev)) {
+            if ("ms.channel.ready".equals(ev)) {
+                readyLatch.countDown();
+            } else if ("ms.remote.imeStart".equals(ev)) {
                 ime = true;
                 listener.onIme(true, decode(d.optString("data", "")));
             } else if ("ms.remote.imeUpdate".equals(ev)) {
@@ -222,7 +339,8 @@ public class TvClient {
         } else if (ws == w) {
             ws = null;
             connected = false;
-            setState("offline", "TV not reachable");
+            setState("offline", "TV connection lost - reconnecting...");
+            requestConnect();
         }
     }
 
@@ -248,22 +366,23 @@ public class TvClient {
             }
         }
         if (!"offline".equals(state)) {
-            setState("offline", "TV not reachable");
+            setState("offline", "TV connection lost - reconnecting...");
         }
     }
 
+    /** Never waits: if the TV is not connected the key is dropped (no old commands replaying later). */
     private boolean send(JSONObject payload) {
-        for (int i = 0; i < 2; i++) {
-            if (!connect()) {
-                return false;
-            }
-            WebSocket w = ws;
-            if (w != null && w.send(payload.toString())) {
-                return true;
-            }
-            drop();
+        WebSocket w = ws;
+        if (!connected || w == null) {
+            requestConnect();
+            return false;
         }
-        return false;
+        if (w.queueSize() > 4096 || !w.send(payload.toString())) {
+            drop();
+            requestConnect();
+            return false;
+        }
+        return true;
     }
 
     private JSONObject remote(String c, String data, String type) {
@@ -282,14 +401,31 @@ public class TvClient {
 
     // ---------------- commands ----------------
     public void retry() {
-        cmd.execute(() -> connect());
+        forceScan = true;
+        requestConnect();
+    }
+
+    public void resume() {
+        if (!connected) {
+            requestConnect();
+        }
     }
 
     public void key(final String k) {
         if (!KEY_RE.matcher(k).matches()) {
             return;
         }
-        cmd.execute(() -> sendKey(k));
+        if (pending.incrementAndGet() > 8) { // TV is slow: skip instead of building a backlog
+            pending.decrementAndGet();
+            return;
+        }
+        cmd.execute(() -> {
+            try {
+                sendKey(k);
+            } finally {
+                pending.decrementAndGet();
+            }
+        });
     }
 
     public void text(String s) {
@@ -324,25 +460,48 @@ public class TvClient {
         });
     }
 
+    /** Wake-on-LAN, then wait for the TV to come up (even if its IP changed) and connect. */
     public void powerOn() {
-        cmd.execute(() -> {
-            String ip = prefs.getString("ip", "");
-            String mac = prefs.getString("mac", "");
-            if (ip.isEmpty() || mac.isEmpty()) {
-                setState("offline", "Power on needs the TV IP and MAC in TV settings");
+        forceScan = true;
+        linkExec.execute(() -> {
+            if (connected) {
                 return;
             }
-            wakeOnLan(mac, ip);
-            setState("offline", "Wake signal sent - give the TV about 10 seconds");
-            for (int i = 0; i < 8; i++) {
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    return;
+            String mac = prefs.getString("mac", "");
+            if (mac.isEmpty()) {
+                setState("offline", "Power on needs the TV's MAC. Switch the TV on once and open this app: it learns the MAC by itself.");
+                return;
+            }
+            powering = true;
+            try {
+                setState("waiting", "Sending wake signal to the TV...");
+                for (int i = 0; i < 14; i++) {
+                    wakeOnLan(mac, prefs.getString("ip", ""));
+                    try {
+                        Thread.sleep(2500);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    String ip = prefs.getString("ip", "");
+                    boolean up = !ip.isEmpty() && Net.portOpen(ip, 8002, 800);
+                    if (!up) {
+                        String f = discover(mac);
+                        if (f != null) {
+                            prefs.edit().putString("ip", f).apply();
+                            listener.onConfig();
+                            up = true;
+                        }
+                    }
+                    if (up) {
+                        setState("waiting", "TV is starting...");
+                        if (connect()) {
+                            return;
+                        }
+                    }
                 }
-                if (connect()) {
-                    return;
-                }
+                setState("offline", "The TV did not wake. On the TV turn on Settings > General > Network > Expert Settings > Power On with Mobile, then try again.");
+            } finally {
+                powering = false;
             }
         });
     }
@@ -361,16 +520,28 @@ public class TvClient {
             for (int r = 0; r < 16; r++) {
                 System.arraycopy(m, 0, pkt, 6 + r * 6, 6);
             }
-            String[] targets = {"255.255.255.255", ip.substring(0, ip.lastIndexOf('.')) + ".255", ip};
+            List<String> targets = new ArrayList<>();
+            String[] li = Net.localInfo();
+            if (li != null && li[1] != null) {
+                targets.add(li[1]);
+            }
+            targets.add("255.255.255.255");
+            if (!ip.isEmpty() && ip.lastIndexOf('.') > 0) {
+                targets.add(ip.substring(0, ip.lastIndexOf('.')) + ".255");
+                targets.add(ip);
+            }
             try (DatagramSocket s = new DatagramSocket()) {
                 s.setBroadcast(true);
-                for (String t : targets) {
-                    for (int p : new int[]{9, 7}) {
-                        try {
-                            s.send(new DatagramPacket(pkt, pkt.length, InetAddress.getByName(t), p));
-                        } catch (Exception ignored) {
+                for (int rep = 0; rep < 3; rep++) {
+                    for (String t : targets) {
+                        for (int p : new int[]{9, 7}) {
+                            try {
+                                s.send(new DatagramPacket(pkt, pkt.length, InetAddress.getByName(t), p));
+                            } catch (Exception ignored) {
+                            }
                         }
                     }
+                    Thread.sleep(80);
                 }
             }
         } catch (Exception ignored) {
@@ -484,22 +655,27 @@ public class TvClient {
         }
     }
 
-    /** Returns "" on success, otherwise an error message. */
+    /** Both fields are optional now (the app finds the TV itself). Returns "" on success, otherwise an error message. */
     public String saveConfig(String ip, String mac) {
         ip = ip.trim();
         mac = mac.trim();
-        if (!ip.matches("^\\d{1,3}(\\.\\d{1,3}){3}$")) {
-            return "Check the IP address (like 192.168.0.101)";
+        if (!ip.isEmpty() && !ip.matches("^\\d{1,3}(\\.\\d{1,3}){3}$")) {
+            return "Check the IP address (like 192.168.0.101) or leave it empty";
         }
         if (!mac.isEmpty() && !mac.matches("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")) {
-            return "Check the MAC address (like AA:BB:CC:DD:EE:FF)";
+            return "Check the MAC address (like AA:BB:CC:DD:EE:FF) or leave it empty";
         }
-        SharedPreferences.Editor e = prefs.edit().putString("ip", ip).remove("token");
+        SharedPreferences.Editor e = prefs.edit();
+        if (!ip.equals(prefs.getString("ip", ""))) {
+            e.remove("token");
+        }
+        e.putString("ip", ip);
         if (!mac.isEmpty()) {
             e.putString("mac", mac.toUpperCase().replace('-', ':'));
         }
         e.apply();
-        cmd.execute(() -> {
+        forceScan = true;
+        linkExec.execute(() -> {
             drop();
             connect();
         });
@@ -510,6 +686,7 @@ public class TvClient {
         sup.shutdownNow();
         cmd.shutdownNow();
         gridExec.shutdownNow();
+        linkExec.shutdownNow();
         drop();
     }
 }
